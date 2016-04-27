@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
   // Using offstream to output the file
   ofstream outfile;
   outfile.open(argv[3], std::ofstream::out);  
-  const int num_file=2; // This is the number of images which we want to extract features
+  const int num_file=40; // This is the number of images which we want to extract features
   
   // Using two strings to express the directory of the scan images and masks
   string scan[num_file];
