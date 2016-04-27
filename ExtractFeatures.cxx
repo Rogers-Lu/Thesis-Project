@@ -10,6 +10,7 @@
 #include <random>       // std::default_random_engine
 #include <chrono>       // std::chrono::system_clock
 #include <string>
+
 using std::string;
 using namespace std;
 int main(int argc, char *argv[])
@@ -28,19 +29,27 @@ int main(int argc, char *argv[])
   typedef itk::ImageFileReader< SegmImageType > SegmReaderType;
 
   // Using ifstream to read the file name from two inputting text files
+  // infile1 is used to read the fisrt input file, and infile2 is for the second input file
   ifstream infile1;
   infile1.open (argv[1]);
   ifstream infile2;
   infile2.open (argv[2]);
+
+  // Using offstream to output the file
   ofstream outfile;
   outfile.open(argv[3], std::ofstream::out);  
-  const int num_file=2;
+  const int num_file=2; // This is the number of images which we want to extract features
+  
+  // Using two strings to express the directory of the scan images and masks
   string scan[num_file];
   string mask[num_file];
+
+  // Read every images from the two input files
   for(int m=0;m<num_file;m++)
   {	  
 	  infile1>>scan[m];
 	  infile2>>mask[m];
+
   // Read input scan
   ScanReaderType::Pointer scanReader = ScanReaderType::New();
   scanReader->SetFileName(scan[m]);
@@ -92,13 +101,12 @@ int main(int argc, char *argv[])
   unsigned short segmValue;
   float scanValue;
 
-      // Iterate through the segmentation mask
+  // Iterate through the segmentation mask
   itk::ImageRegionConstIterator<SegmImageType> segmImageIterator(segmImage,segmImage->GetLargestPossibleRegion());
 
  
-  // Calculate the number of voxels which are greater than 0 in the mask
+  // This loop is used to calculate the number of voxels which are greater than 0 in the mask
   int num1=0; // This is the number
-
   while(!segmImageIterator.IsAtEnd())
   {
     // Get the value of the current voxel (in the segmentation mask)
@@ -114,13 +122,15 @@ int main(int argc, char *argv[])
   }
 
   // Generate a 500 points array chosen from the mask voxels randomly
-  static default_random_engine e;
-  static uniform_int_distribution<unsigned> u(0,num1-1);
-  vector<unsigned> ret;
-  for(int i=0;i<500;i++)
-	  ret.push_back(u(e));
-  
-  //Generate a vector whose size equals to 'num', 
+  vector<int> ret(num1);
+  for(int k=0;k<num1;k++)
+	  ret[k]=k;
+  // obtain a time-based seed:
+  unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+  // shuffle the elements in vector ret
+  shuffle (ret.begin(), ret.end(), std::default_random_engine(seed));
+ 
+  //Generate a vector whose size equals to 'num1', 
   //and for the indexes which equal to the random numbers generated, their values are 1
   vector<int> v(num1);
   for(int i=0;i<500;i++)
@@ -130,13 +140,14 @@ int main(int argc, char *argv[])
   //num2 is used to detect the randomly chosen voxels in mask
   segmImageIterator.GoToBegin();
   int num2=0;
+  bool firstRun=true;
   while(!segmImageIterator.IsAtEnd())
   {
-	bool firstRun=true;
+	
 	segmValue = segmImageIterator.Get();
     if(segmValue>0)
     {
-		if(v[++num2]==1)
+		if(v[++num2]==1)  // Check if the value equals '1', if yes, this means that it is the chosen voxel.
 		{
       // Get the index of the current voxel
       centerIndex = segmImageIterator.GetIndex();
@@ -150,8 +161,8 @@ int main(int argc, char *argv[])
       // Get value of the voxel in scanImage at offsetIndex
       scanValue = scanImage->GetPixel(offsetIndex);
 
-	  // (1) Calculate the mean intensity, using three for loops
-	  int sum=0;
+	  //Calculate the mean intensity, using nested loops
+	  int sum=0;//  try float
 	  int radiusX = 3;
 	  int radiusY = 3;
 	  int radiusZ = 1;
