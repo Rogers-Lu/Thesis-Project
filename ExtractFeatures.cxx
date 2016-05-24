@@ -10,15 +10,27 @@
 #include <random>       // std::default_random_engine
 #include <chrono>       // std::chrono::system_clock
 #include <string>
+#include "itkImageDuplicator.h"   // to save another image which include the extracted features
+#include "itkImageFileWriter.h"
+#include <vector>
 
+using std::vector;
 using std::string;
 using namespace std;
+
+//int const num_offset=30;
+typedef itk::Image< unsigned short, 3 >       SegmImageType;
+typedef itk::Image< float, 3 >                ScanImageType;
+int featureCal(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
+
 int main(int argc, char *argv[])
 {
-  if( argc < 3 )
+  if( argc < 6 )
   {
     std::cerr << "Usage: " << std::endl;
-    std::cerr << argv[0] << " inputLisrofImage inputListofMsk outputFeatureFile" << std::endl;
+
+	//featureSettings is a file containing the number of offset, offset matrix, the number of window and the size of the window 
+    std::cerr << argv[0] << " inputLisrofImage inputListofMsk offsetSettings  windowSettings trainingFeature testFeature" << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -28,6 +40,9 @@ int main(int argc, char *argv[])
   typedef itk::Image< unsigned short, 3 >       SegmImageType;
   typedef itk::ImageFileReader< SegmImageType > SegmReaderType;
 
+  typedef itk::ImageDuplicator< SegmImageType > DuplicatorType;
+  typedef itk::ImageFileWriter< SegmImageType > SegmWriterType;
+
   // Using ifstream to read the file name from two inputting text files
   // infile1 is used to read the fisrt input file, and infile2 is for the second input file
   ifstream infile1;
@@ -35,32 +50,82 @@ int main(int argc, char *argv[])
   ifstream infile2;
   infile2.open (argv[2]);
 
+  //Read the offsetSettings file
+  ifstream infile3;
+  infile3.open (argv[3]);
+  int num_offset;
+  infile3>>num_offset;
+  vector<int> tempvec(3);
+  vector<vector<int> > offset(num_offset, vector<int>(3));  // use a dynamic array or vector
+  for(int i=0;i<num_offset;i++)
+  {
+	  for(int j=0;j<3;j++)
+	  {
+		  infile3>>offset[i][j];
+	  }
+  }
+
+  //Read the windowSettings file
+  ifstream infile4;
+  infile4.open (argv[4]);
+  int num_window;
+  infile4>>num_window;
+  int radiusX1;
+  int radiusY1;
+  int radiusZ1;
+  int patchSize1;
+  int radiusX2;
+  int radiusY2;
+  int radiusZ2;
+  int patchSize2;
+  if (num_window==1)
+  {
+	  infile4>>radiusX1;
+	  infile4>>radiusY1;
+	  infile4>>radiusZ1;
+  }
+  else if(num_window==2)
+  {
+	  infile4>>radiusX1;
+	  infile4>>radiusY1;
+	  infile4>>radiusZ1;
+	  infile4>>radiusX2;
+	  infile4>>radiusY2;
+	  infile4>>radiusZ2;
+
+  }
+  patchSize1= (2*radiusX1+1)*(2*radiusY1+1)*(2*radiusZ1+1);
+  patchSize2= (2*radiusX2+1)*(2*radiusY2+1)*(2*radiusZ2+1);
+
+
   // Using offstream to output the file
-  ofstream outfile;
-  outfile.open(argv[3], std::ofstream::out);  
+  ofstream outfile1;
+  outfile1.open(argv[5], std::ofstream::out);  
   const int num_file=40; // This is the number of images which we want to extract features
-  
+  ofstream outfile2;
+  outfile2.open(argv[6], std::ofstream::out);  
+
   // Using two strings to express the directory of the scan images and masks
   string scan[num_file];
   string mask[num_file];
 
   // Read every images from the two input files
-  for(int m=0;m<num_file;m++)
+  for(int w=0;w<num_file;w++)
   {	  
-	  infile1>>scan[m];
-	  infile2>>mask[m];
+	  infile1>>scan[w];
+	  infile2>>mask[w];
 
   // Read input scan
   ScanReaderType::Pointer scanReader = ScanReaderType::New();
-  scanReader->SetFileName(scan[m]);
+  scanReader->SetFileName(scan[w]);
   scanReader->Update();
-  std::cout << "Loaded image " << scan[m] << std::endl;
+  std::cout << "Loaded image " << scan[w] << std::endl;
 
   // Read input segmentation
   SegmReaderType::Pointer segmReader = SegmReaderType::New();
-  segmReader->SetFileName(mask[m]);
+  segmReader->SetFileName(mask[w]);
   segmReader->Update();
-  std::cout << "Loaded image " << mask[m] << std::endl;
+  std::cout << "Loaded image " << mask[w] << std::endl;
 
   // Save loaded images
   ScanImageType::Pointer scanImage = scanReader->GetOutput();
@@ -76,37 +141,79 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  //***********************************************************//
+  // Duplicate the segmentation image
+
+  DuplicatorType::Pointer duplicator = DuplicatorType::New();
+  duplicator->SetInputImage(segmImage);
+  duplicator->Update();
+  SegmImageType::Pointer outputImage = duplicator->GetOutput();
+  //***********************************************************//
+
+
   /* Extract features
    */
 
   // Declare necessary variables
   SegmImageType::IndexType centerIndex;
   ScanImageType::IndexType offsetIndex;
+  SegmImageType::IndexType tmpIndex;
+  SegmImageType::IndexType offsetIndex_neg;
 
-  //10 different offsets
-  int num_offset=10;
-  int offset[10][3] = {
-	  {0, 0, 0},
-	  {5, 5, 5},
-	  {-5, -10, -5},
-	  {10, 10, 10},
-	  {10, 5, 10},
-	  {15, -5, 10},
-	  {15,-10,10},
-	  {15, 15, 15},
-	  {15,-10,-15},
-	  {20, 20, 20}
+  const int size_corner=8;
+  vector<SegmImageType::IndexType> cornerIndex(size_corner);
+  ScanImageType::IndexType cornerIndex_exp;
+
+  // define the offset of the corner;
+  // This can also influence the classifed results
+  // This might affect the performance of segmentation
+  //Choosing 15*15*7
+  // The orginal window size extracting the negative voxels is 21*21*11
+  int offset_corner[size_corner][3]={
+	  {7,7,3},
+	  {7,7,-3},
+	  {7,-7,3},
+	  {7,-7,-3},
+	  {-7,7,3},
+	  {-7,7,-3},
+	  {-7,-7,3},
+	  {-7,-7,-3}
   };
 
+  // define the offset used to write the features to an image
+    int const size_neighbor=26;
+	vector<SegmImageType::IndexType> featureIndex(size_neighbor);
+	int offset_feature[size_neighbor][3] = {
+	  {0, 0, -1},{0, 0, 1},
+	  {0, -1, 0},{0, -1, -1}, {0, -1, 1},
+	  {0, 1, 0},{0, 1, -1}, {0, 1, 1},
+	  {-1, 0, 0},{-1, 0, -1}, {-1, 0, 1},
+	  {-1, -1, 0},{-1, -1, -1}, {-1, -1, 1},
+	  {-1, 1, 0},{-1, 1, -1}, {-1, 1, 1},
+	  {1, 0, 0},{1, 0, -1}, {1, 0, 1},
+	  {1, -1, 0},{1, -1, -1},{1, -1, 1},
+	  {1, 1, 0},{1, 1, -1}, {1, 1, 1}
+
+  };
+
+
+  //10 different offsets
+ //
   unsigned short segmValue;
   float scanValue;
+  float scanValue_neg;
 
   // Iterate through the segmentation mask
   itk::ImageRegionConstIterator<SegmImageType> segmImageIterator(segmImage,segmImage->GetLargestPossibleRegion());
 
- 
+ /******************************************************************************/
+
   // This loop is used to calculate the number of voxels which are greater than 0 in the mask
+  // In the meantime this loop find the start voxel and end voxel of mask, 
+  // which would be used to generate a suitable window.
+  // We use the information of the indexes of two corner voxels to find a suitable window size.
   int num1=0; // This is the number
+  vector< SegmImageType::IndexType> segm_index;
   while(!segmImageIterator.IsAtEnd())
   {
     // Get the value of the current voxel (in the segmentation mask)
@@ -115,11 +222,19 @@ int main(int argc, char *argv[])
 
 	 if(segmValue>0)
 	 {
+		 segm_index.push_back(segmImageIterator.GetIndex());
 		 num1=num1+1;
 	 }
 	     ++segmImageIterator;
-
   }
+  // Define a window size which can make sure in this window, 
+  //if the mask voxel is at the corner of the window, the center voxel must be negative.
+  int offset_max[3]={
+	  abs(segm_index[0][0]-segm_index[num1-1][0])/2+1,
+	  abs(segm_index[0][1]-segm_index[num1-1][1])/2+1,
+	  abs(segm_index[0][2]-segm_index[num1-1][2])/2+1
+  };
+
 
   // Generate a 500 points array chosen from the mask voxels randomly
   vector<int> ret(num1);
@@ -127,7 +242,7 @@ int main(int argc, char *argv[])
 	  ret[k]=k;
   // obtain a time-based seed:
   unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-  // shuffle the elements in vector ret
+  // shuffle the elements in vector 'ret'
   shuffle (ret.begin(), ret.end(), std::default_random_engine(seed));
  
   //Generate a vector whose size equals to 'num1', 
@@ -136,73 +251,380 @@ int main(int argc, char *argv[])
   for(int i=0;i<500;i++)
 	  v[ret[i]]=1;
 
- // In this part the iterator is set to the beginning again and iterate again
+  /******************************************************************************/
+ 
+  //Window size is 7*7*3
+ /* int radiusX1 = 5;
+  int radiusY1 = 5;
+  int radiusZ1 = 2;
+  int patchSize1 = (2*radiusX1+1)*(2*radiusY1+1)*(2*radiusZ1+1);
+  //Use another size of window:11*11*5
+  int radiusX2 = 5;
+  int radiusY2 = 5;
+  int radiusZ2 = 2;
+  int patchSize2 = (2*radiusX2+1)*(2*radiusY2+1)*(2*radiusZ2+1);
+  */
+
+  // In this part the iterator is set to the beginning again and iterate again
   //num2 is used to detect the randomly chosen voxels in mask
+
   segmImageIterator.GoToBegin();
   int num2=0;
-  bool firstRun=true;
+  //bool firstRun=true;
   while(!segmImageIterator.IsAtEnd())
   {
 	
 	segmValue = segmImageIterator.Get();
+	//bool firstRun=true;
+	
+	
+/******************************************************************************/
+
     if(segmValue>0)
-    {
-		if(v[++num2]==1)  // Check if the value equals '1', if yes, this means that it is the chosen voxel.
+	{
+		if(v[num2++]==1)  // Check if the value equals '1', if yes, this means that it is the chosen voxel.
 		{
-      // Get the index of the current voxel
-      centerIndex = segmImageIterator.GetIndex();
+			// Get the index of the current voxel
+
+			/******************************************************************************/
+
+			centerIndex = segmImageIterator.GetIndex();
+			tmpIndex = centerIndex;
+			// Find a voxel whose value is negative and it is close to the mask
+			// Use a window (11*11*5) and assume that the mask voxels are always at the corner of the window
+			vector<unsigned short> cornerValue(size_corner);
+			int test=1;// This is used to test if there existing a corner voxel whose value is greater than 0
+			int num3=0; // This is used to control the number of negative voxels in the range of 500
+			bool firstRun1=true;
+			for(int m=0;m<size_corner;m++)
+			{
+				//cornerIndex is the index of the center voxel of each window,
+				//when the current voxel is one of the corner voxel of this window.
+				cornerIndex[m][0] = tmpIndex[0] - offset_corner[m][0]; 
+                cornerIndex[m][1] = tmpIndex[1] - offset_corner[m][1];
+		        cornerIndex[m][2] = tmpIndex[2] - offset_corner[m][2];
+		        cornerValue[m]=segmImage->GetPixel(cornerIndex[m]);
+		        test=test*cornerValue[m];
+				if((test==0)&&(num3<1))
+				{
+					// Change the value of the current voxel and also its neighborhood voxels
+					// This is used to change the value of the neighborhood voxels to make the generaetd image clear 
+					for(int i=0;i<size_neighbor;i++)
+					{
+						featureIndex[i][0] = cornerIndex[m][0] + offset_feature[i][0];
+                        featureIndex[i][1] = cornerIndex[m][1] + offset_feature[i][1];
+                        featureIndex[i][2] = cornerIndex[m][2] + offset_feature[i][2];
+						outputImage->SetPixel(featureIndex[i], 50);
+					}
+					outputImage->SetPixel(cornerIndex[m], 50); // write the value of '50' to the duplicated image
+					num3++;
+					for(int n=0;n<num_offset;n++)
+					{
+						offsetIndex_neg[0] = cornerIndex[m][0] + offset[n][0];
+	                    offsetIndex_neg[1] = cornerIndex[m][1] + offset[n][1];
+						offsetIndex_neg[2] = cornerIndex[m][2] + offset[n][2];
+						// Get value of the voxel in scanImage at offsetIndex
+						scanValue_neg = scanImage->GetPixel(offsetIndex_neg);
+					
+						//Calculate the mean intensity, using nested loops
+						if(1==num_window)
+						{
+							int sum_neg1=0;//  try float
+						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
+							if(firstRun1)
+							{
+								if(w<30)
+								{
+									outfile1<<sum_neg1/patchSize1;
+								}
+								else
+								{
+									outfile2<<sum_neg1/patchSize1;
+								}
+							    firstRun1=false;
+						    }
+						    else
+						   {
+							   if(w<30)
+							   {
+								   outfile1<<","<<sum_neg1/patchSize1;
+							   }
+							   else
+							   {
+								   outfile2<<","<<sum_neg1/patchSize1;
+							   }
+						   }
+						}
+						else
+						{
+							int sum_neg1=0;//  try float
+						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
+							int sum_neg2=0;
+							sum_neg2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex_neg,scanImage);
+							if(firstRun1)
+							{
+								if(w<30)
+								{
+									outfile1<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+								else
+								{
+									outfile2<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+							    firstRun1=false;
+						    }
+							else				
+							{
+								if(w<30)
+								{
+								    outfile1<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+								else
+								{
+								    outfile2<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+							}
+						}
+					}
+					if(w<30)
+					{
+					     outfile1<<","<<"0"<<endl;
+					}
+					else
+					{
+					     outfile2<<","<<"0"<<endl;
+					}
+				}
+			}
+			/******************************************************************************/
+			//This is used to solve the issue which for the previous window, there might be no negative voxels.
+			if(test>0)
+			{
+				cornerIndex_exp[0] = tmpIndex[0]  +offset_max[0];
+                cornerIndex_exp[1] = tmpIndex[1]  +offset_max[1];
+		        cornerIndex_exp[2] = tmpIndex[2] +offset_max[2];
+				for(int n=0;n<num_offset;n++)
+					{
+						for(int i=0;i<size_neighbor;i++)
+						{
+							featureIndex[i][0] = cornerIndex_exp[0] + offset_feature[i][0];
+                            featureIndex[i][1] = cornerIndex_exp[1] + offset_feature[i][1];
+                            featureIndex[i][2] = cornerIndex_exp[2] + offset_feature[i][2];
+						    outputImage->SetPixel(featureIndex[i], 50);
+						}
+						outputImage->SetPixel(cornerIndex_exp, 50); // write the value of '50' to the duplicated image
+						offsetIndex_neg[0] = cornerIndex_exp[0] + offset[n][0];
+	                    offsetIndex_neg[1] = cornerIndex_exp[1] + offset[n][1];
+						offsetIndex_neg[2] = cornerIndex_exp[2] + offset[n][2];
+						// Get value of the voxel in scanImage at offsetIndex
+						scanValue_neg = scanImage->GetPixel(offsetIndex_neg);
+
+						//Calculate the mean intensity, using nested loops	                   	
+						if(1==num_window)
+						{
+							int sum_neg1=0;//  try float
+						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
+							if(firstRun1)
+							{
+								if(w<30)
+								{
+								      outfile1<<sum_neg1/patchSize1;
+								}
+								else
+								{
+								      outfile2<<sum_neg1/patchSize1;
+								}
+							    firstRun1=false;
+						    }
+						    else
+						   {
+							   if(w<30)
+							   {
+							          outfile1<<","<<sum_neg1/patchSize1;
+							   }
+							   else
+							   {
+							          outfile2<<","<<sum_neg1/patchSize1;
+							   }
+						   }
+						}
+						else
+						{
+							int sum_neg1=0;//  try float
+						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
+							int sum_neg2=0;
+							sum_neg2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex_neg,scanImage);
+							if(firstRun1)
+							{
+								if(w<30)
+								{
+								      outfile1<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+								else
+								{
+								      outfile2<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+							    firstRun1=false;
+						    }
+							else				
+							{
+								if(w<30)
+								{
+								      outfile1<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+								else
+								{
+								      outfile2<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
+								}
+							}
+						}
+				}
+				if(w<30)
+				{
+					outfile1<<","<<"0"<<endl;
+				}
+				else
+				{
+					outfile2<<","<<"0"<<endl;
+				}
+			}
+
+	/******************************************************************************/
+	
+		// If test is greater than 0 then it means that there is at least one corner voxel whose value is greater than 0
+		// Then we calculate the offset value of this voxel
+			
+					
+	/******************************************************************************/
+
       // Define the index of the offset voxel
+	  bool firstRun2=true;
 	  for(int n=0;n<num_offset;n++)
-  {
-	  offsetIndex[0] = centerIndex[0] + offset[n][0];
-	  offsetIndex[1] = centerIndex[1] + offset[n][1];
-	  offsetIndex[2] = centerIndex[2] + offset[n][2];
-
-      // Get value of the voxel in scanImage at offsetIndex
-      scanValue = scanImage->GetPixel(offsetIndex);
-
-	  //Calculate the mean intensity, using nested loops
-	  int sum=0;//  try float
-	  int radiusX = 3;
-	  int radiusY = 3;
-	  int radiusZ = 1;
-	  int patchSize = (2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1);
-
-	  SegmImageType::IndexType tempIndex;
-	  for(int i=-radiusX;i<=radiusX;i++)
-	  { for(int j=-radiusY;j<=radiusY;j++)
-	  { for(int k=-radiusZ;k<=radiusZ;k++)
 	  {
-		  tempIndex[0] = offsetIndex[0] + i;
-          tempIndex[1] = offsetIndex[1] + j;
-          tempIndex[2] = offsetIndex[2] + k;
-		  sum=sum+scanImage->GetPixel(tempIndex);
-	  }}}
+		  offsetIndex[0] = centerIndex[0] + offset[n][0];
+		  offsetIndex[1] = centerIndex[1] + offset[n][1];
+		  offsetIndex[2] = centerIndex[2] + offset[n][2];
+		  
+		  for(int i=0;i<size_neighbor;i++)
+		  {
+			  featureIndex[i][0] = centerIndex[0] + offset_feature[i][0];
+			  featureIndex[i][1] = centerIndex[1] + offset_feature[i][1];
+              featureIndex[i][2] = centerIndex[2] + offset_feature[i][2];
+			  outputImage->SetPixel(featureIndex[i], 100);
+		  }
+		  outputImage->SetPixel(centerIndex, 100); // value: 50 or 100
 
-	  if(firstRun)
+		  // Get value of the voxel in scanImage at offsetIndex
+		  scanValue = scanImage->GetPixel(offsetIndex);
+
+
+		  //Calculate the mean intensity, using nested loops
+		  if(1==num_window)
+		  {
+			  int sum1=0;//  try float
+			  sum1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
+			  if(firstRun2)
+			  {
+				  if(w<30)
+				  {
+				      outfile1<<sum1/patchSize1;
+				  }
+				  else
+				  {
+					  outfile2<<sum1/patchSize1;
+				  }
+				  firstRun2=false;
+			  }
+			  else
+			  {
+				  if(w<30)
+				  {
+				      outfile1<<","<<sum1/patchSize1;
+				  }
+				  else
+				  {
+				      outfile2<<","<<sum1/patchSize1;
+				  }
+			  }
+		  }
+		  else
+		  {
+			  int sum1=0;//  try float
+			  sum1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
+			  int sum2=0;
+			  sum2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex,scanImage);
+			  if(firstRun2)
+			  {
+				  if(w<30)
+				  {
+					  outfile1<<sum1/patchSize1<<","<<sum2/patchSize2;
+				  }
+				  else
+				  {
+					  outfile2<<sum1/patchSize1<<","<<sum2/patchSize2;
+				  }
+				  firstRun2=false;
+			  }
+			  else				
+			  {
+				  if(w<30)
+				  {
+					  outfile1<<","<<sum1/patchSize1<<","<<sum2/patchSize2;
+				  }
+				  else
+				  {
+					  outfile2<<","<<sum1/patchSize1<<","<<sum2/patchSize2;
+				  }
+			  }
+		  }		
+		  
+	  }
+	  if(w<30)
 	  {
-		  outfile<<sum/patchSize;
-		  firstRun=false;
+		  outfile1<<","<<"1"<<endl;
 	  }
 	  else
 	  {
-		  outfile<<","<<sum/patchSize;
+		  outfile2<<","<<"1"<<endl;
 	  }
-	  }
+		}
 	}
-	
-  }
-      ++segmImageIterator;
-  }
-  outfile<<endl;
+	/******************************************************************************/
+	++segmImageIterator;
+}
+//SegmWriterType::Pointer segmWriter = SegmWriterType::New();
+//segmWriter->SetFileName("featureVoxels00.nii.gz");
+//segmWriter->SetInput(outputImage);
+//segmWriter->Update();
+//std::cout << "Saved output image. " << std::endl;
 
-  }
+}
   infile1.close();
   infile2.close();
-  outfile.close();
-
-
-  // Write features
-  
+  infile3.close();
+  infile4.close();
+  outfile1.close();
+  outfile2.close();
   return EXIT_SUCCESS;
+}
+
+
+int featureCal(int radiusX,int radiusY, int radiusZ, ScanImageType::IndexType Index, ScanImageType::Pointer scanImage)
+{
+	int sum=0;
+	SegmImageType::IndexType tempIndex;
+	for(int i=-radiusX;i<=radiusX;i++)
+	{
+		for(int j=-radiusY;j<=radiusY;j++)
+		{ 
+			for(int k=-radiusZ;k<=radiusZ;k++)
+			{
+				tempIndex[0] = Index[0] + i;
+				tempIndex[1] = Index[1] + j;
+				tempIndex[2] = Index[2] + k;
+				sum=sum+scanImage->GetPixel(tempIndex);
+			}
+		}
+	}
+	return sum;
 }
