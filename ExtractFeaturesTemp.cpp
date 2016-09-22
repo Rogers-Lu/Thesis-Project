@@ -13,7 +13,7 @@
 #include "itkImageDuplicator.h"   // to save another image which include the extracted features
 #include "itkImageFileWriter.h"
 #include <vector>
-#include <cmath>
+
 using std::vector;
 using std::string;
 using namespace std;
@@ -22,11 +22,6 @@ using namespace std;
 typedef itk::Image< unsigned short, 3 >       SegmImageType;
 typedef itk::Image< float, 3 >                ScanImageType;
 int featureCal(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
-int featureCalHarmonic(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
-float featureCalGeo(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
-float featureCalVariance(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
-float featureCalSkewness(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
-float featureCalKurtosis(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage);
 
 int main(int argc, char *argv[])
 {
@@ -47,8 +42,6 @@ int main(int argc, char *argv[])
 
   typedef itk::ImageDuplicator< SegmImageType > DuplicatorType;
   typedef itk::ImageFileWriter< SegmImageType > SegmWriterType;
-
-
 
   // Using ifstream to read the file name from two inputting text files
   // infile1 is used to read the fisrt input file, and infile2 is for the second input file
@@ -73,41 +66,7 @@ int main(int argc, char *argv[])
   }
 
   //Read the windowSettings file
-  ifstream infile4;
-  infile4.open (argv[4]);
-  int num_window;
-  infile4>>num_window;
-  int radiusX1;
-  int radiusY1;
-  int radiusZ1;
-  int patchSize1;
-  int radiusX2;
-  int radiusY2;
-  int radiusZ2;
-  int patchSize2;
-  if (num_window==1)
-  {
-	  infile4>>radiusX1;
-	  infile4>>radiusY1;
-	  infile4>>radiusZ1;
-  }
-  else if(num_window==2)
-  {
-	  infile4>>radiusX1;
-	  infile4>>radiusY1;
-	  infile4>>radiusZ1;
-	  infile4>>radiusX2;
-	  infile4>>radiusY2;
-	  infile4>>radiusZ2;
-
-  }
-  patchSize1= (2*radiusX1+1)*(2*radiusY1+1)*(2*radiusZ1+1);
-  patchSize2= (2*radiusX2+1)*(2*radiusY2+1)*(2*radiusZ2+1);
-
-
-
-
- /* ifstream infile4;
+  /*ifstream infile4;
   infile4.open (argv[4]);
   int num_window;
   infile4>>num_window;
@@ -124,16 +83,36 @@ int main(int argc, char *argv[])
   }
   for(int a=0;a<num_window;a++)
 	  patchSize1[a]= (2*radiusX1[a]+1)*(2*radiusY1[a]+1)*(2*radiusZ1[a]+1);
-	  */
+*/
+
+  ifstream infile4;
+  infile4.open (argv[4]);
+  int num_window;
+  infile4>>num_window;
+  int radiusX1;
+  int radiusY1;
+  int radiusZ1;
+  int patchSize1;
+  if (num_window==1)
+  {
+	  infile4>>radiusX1;
+	  infile4>>radiusY1;
+	  infile4>>radiusZ1;
+  }
+ 
+  patchSize1= (2*radiusX1+1)*(2*radiusY1+1)*(2*radiusZ1+1);
+
+
+
 
 
   // Using offstream to output the file
   ofstream outfile1;
   outfile1.open(argv[5], std::ofstream::out);  
-  const int num_file=1; // This is the number of images which we want to extract features
+  const int num_file=38; // This is the number of images which we want to extract features
   ofstream outfile2;
   outfile2.open(argv[6], std::ofstream::out);  
-  
+
   // Using two strings to express the directory of the scan images and masks
   string scan[num_file];
   string mask[num_file];
@@ -356,39 +335,18 @@ int main(int argc, char *argv[])
 						scanValue_neg = scanImage->GetPixel(offsetIndex_neg);
 					
 						//Calculate the mean intensity, using nested loops
-						if(1==num_window)
-						{
-							int sum_neg1=0;//  try float
-							float variance = 0.0;
-							float GeoMean = 0.0;
-							int HarMean = 0;
-							float skewness=0.0,kurtosis=0.0;
-						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							variance = featureCalVariance(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							GeoMean = featureCalGeo(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							//HarMean = featureCalHarmonic(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							skewness = featureCalSkewness(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							kurtosis = featureCalKurtosis(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
 
-							// Populate the two vectors vv1 and vv2 meanwhile;
+							int sum_neg1=0;//  try float
+						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
 							if(firstRun1)
 							{
 								if(w<30)
 								{
-									outfile1<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									/*vv1[w*num2][4*n]=sum_neg1/patchSize1;
-									vv1[w*num2][4*n+1]=variance;
-									vv1[w*num2][4*n+2]=skewness;
-									vv1[w*num2][4*n+3]=kurtosis;*/
+									outfile1<<sum_neg1/patchSize1;
 								}
 								else
 								{
-									outfile2<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									/*vv2[(w-31)*num2][4*n]=sum_neg1/patchSize1;
-									vv2[(w-31)*num2][4*n+1]=variance;
-									vv2[(w-31)*num2][4*n+2]=skewness;
-									vv2[(w-31)*num2][4*n+3]=kurtosis;*/
-
+									outfile2<<sum_neg1/patchSize1;
 								}
 							    firstRun1=false;
 						    }
@@ -396,53 +354,13 @@ int main(int argc, char *argv[])
 						   {
 							   if(w<30)
 							   {
-								   outfile1<<","<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									/*vv1[w*num2][4*n]=sum_neg1/patchSize1;
-									vv1[w*num2][4*n+1]=variance;
-									vv1[w*num2][4*n+2]=skewness;
-									vv1[w*num2][4*n+3]=kurtosis;*/
-
+								   outfile1<<","<<sum_neg1/patchSize1;
 							   }
 							   else
 							   {
-								   outfile2<<","<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-								   /*vv2[(w-31)*num2][4*n]=sum_neg1/patchSize1;
-									vv2[(w-31)*num2][4*n+1]=variance;
-									vv2[(w-31)*num2][4*n+2]=skewness;
-									vv2[(w-31)*num2][4*n+3]=kurtosis;*/
+								   outfile2<<","<<sum_neg1/patchSize1;
 							   }
 						   }
-						}
-						else
-						{
-							int sum_neg1=0;//  try float
-						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							int sum_neg2=0;
-							sum_neg2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex_neg,scanImage);
-							if(firstRun1)
-							{
-								if(w<30)
-								{
-									outfile1<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-								else
-								{
-									outfile2<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-							    firstRun1=false;
-						    }
-							else				
-							{
-								if(w<30)
-								{
-								    outfile1<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-								else
-								{
-								    outfile2<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-							}
-						}
 					}
 					if(w<30)
 					{
@@ -478,36 +396,17 @@ int main(int argc, char *argv[])
 						scanValue_neg = scanImage->GetPixel(offsetIndex_neg);
 
 						//Calculate the mean intensity, using nested loops	                   	
-						if(1==num_window)
-						{
 							int sum_neg1=0;//  try float
-							float variance =0.0;
-							float GeoMean = 0.0;
-							int HarMean = 0;
-							float skewness=0.0,kurtosis=0.0;
-							variance = featureCalVariance(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							GeoMean = featureCalGeo(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							//HarMean = featureCalHarmonic(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
 						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							skewness = featureCalSkewness(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							kurtosis = featureCalKurtosis(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
 							if(firstRun1)
 							{
 								if(w<30)
 								{
-								      outfile1<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									 /* vv1[w*num2][4*n]=sum_neg1/patchSize1;
-									  vv1[w*num2][4*n+1]=variance;
-									  vv1[w*num2][4*n+2]=skewness;
-									  vv1[w*num2][4*n+3]=kurtosis;*/
+								      outfile1<<sum_neg1/patchSize1;
 								}
 								else
 								{
-								      outfile2<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									  /*vv2[(w-31)*num2][4*n]=sum_neg1/patchSize1;
-									vv2[(w-31)*num2][4*n+1]=variance;
-									vv2[(w-31)*num2][4*n+2]=skewness;
-									vv2[(w-31)*num2][4*n+3]=kurtosis;*/
+								      outfile2<<sum_neg1/patchSize1;
 								}
 							    firstRun1=false;
 						    }
@@ -515,52 +414,13 @@ int main(int argc, char *argv[])
 						   {
 							   if(w<30)
 							   {
-							          outfile1<<","<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									 /*  vv1[w*num2][4*n]=sum_neg1/patchSize1;
-									  vv1[w*num2][4*n+1]=variance;
-									  vv1[w*num2][4*n+2]=skewness;
-									  vv1[w*num2][4*n+3]=kurtosis;*/
+							          outfile1<<","<<sum_neg1/patchSize1;
 							   }
 							   else
 							   {
-							          outfile2<<","<<sum_neg1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-									/*  vv2[(w-31)*num2][4*n]=sum_neg1/patchSize1;
-									vv2[(w-31)*num2][4*n+1]=variance;
-									vv2[(w-31)*num2][4*n+2]=skewness;
-									vv2[(w-31)*num2][4*n+3]=kurtosis;*/
+							          outfile2<<","<<sum_neg1/patchSize1;
 							   }
 						   }
-						}
-						else
-						{
-							int sum_neg1=0;//  try float
-						    sum_neg1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex_neg,scanImage);
-							int sum_neg2=0;
-							sum_neg2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex_neg,scanImage);
-							if(firstRun1)
-							{
-								if(w<30)
-								{
-								      outfile1<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-								else
-								{
-								      outfile2<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-							    firstRun1=false;
-						    }
-							else				
-							{
-								if(w<30)
-								{
-								      outfile1<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-								else
-								{
-								      outfile2<<","<<sum_neg1/patchSize1<<","<<sum_neg2/patchSize2;
-								}
-							}
-						}
 				}
 				if(w<30)
 				{
@@ -602,36 +462,17 @@ int main(int argc, char *argv[])
 
 
 		  //Calculate the mean intensity, using nested loops
-		  if(1==num_window)
-		  {
 			  int sum1=0;//  try float
-			  float variance =0.0;
-			  float GeoMean = 0.0;
-			  int HarMean = 0;
-			  float skewness=0.0,kurtosis=0.0;
-			  variance = featureCalVariance(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
-			 // GeoMean = featureCalGeo(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
-			  //HarMean = featureCalHarmonic(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
-			  skewness = featureCalSkewness(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
-			  kurtosis = featureCalKurtosis(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
 			  sum1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
 			  if(firstRun2)
 			  {
 				  if(w<30)
 				  {
-				      outfile1<<sum1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-					  /* vv1[w*num2][4*n]=sum1/patchSize1;
-					   vv1[w*num2][4*n+1]=variance;
-			   		   vv1[w*num2][4*n+2]=skewness;
-					   vv1[w*num2][4*n+3]=kurtosis;*/
+				      outfile1<<sum1/patchSize1;
 				  }
 				  else
 				  {
-					  outfile2<<sum1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-					  /*vv2[(w-31)*num2][4*n]=sum1/patchSize1;
-					  vv2[(w-31)*num2][4*n+1]=variance;
-		     		  vv2[(w-31)*num2][4*n+2]=skewness;
-					  vv2[(w-31)*num2][4*n+3]=kurtosis;*/
+					  outfile2<<sum1/patchSize1;
 				  }
 				  firstRun2=false;
 			  }
@@ -639,53 +480,13 @@ int main(int argc, char *argv[])
 			  {
 				  if(w<30)
 				  {
-				      outfile1<<","<<sum1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-					  /*vv1[w*num2][4*n]=sum1/patchSize1;
-					   vv1[w*num2][4*n+1]=variance;
-			   		   vv1[w*num2][4*n+2]=skewness;
-					   vv1[w*num2][4*n+3]=kurtosis;*/
+				      outfile1<<","<<sum1/patchSize1;
 				  }
 				  else
 				  {
-				      outfile2<<","<<sum1/patchSize1<<","<<variance<<","<<skewness<<","<<kurtosis;
-					 /* vv2[(w-31)*num2][4*n]=sum1/patchSize1;
-					  vv2[(w-31)*num2][4*n+1]=variance;
-		     		  vv2[(w-31)*num2][4*n+2]=skewness;
-					  vv2[(w-31)*num2][4*n+3]=kurtosis;*/
+				      outfile2<<","<<sum1/patchSize1;
 				  }
-			  }
-		  }
-		  else
-		  {
-			  int sum1=0;//  try float
-			  sum1=featureCal(radiusX1,radiusY1,radiusZ1,offsetIndex,scanImage);
-			  int sum2=0;
-			  sum2=featureCal(radiusX2,radiusY2,radiusZ2,offsetIndex,scanImage);
-			  if(firstRun2)
-			  {
-				  if(w<30)
-				  {
-					  outfile1<<sum1/patchSize1<<","<<sum2/patchSize2;
-				  }
-				  else
-				  {
-					  outfile2<<sum1/patchSize1<<","<<sum2/patchSize2;
-				  }
-				  firstRun2=false;
-			  }
-			  else				
-			  {
-				  if(w<30)
-				  {
-					  outfile1<<","<<sum1/patchSize1<<","<<sum2/patchSize2;
-				  }
-				  else
-				  {
-					  outfile2<<","<<sum1/patchSize1<<","<<sum2/patchSize2;
-				  }
-			  }
-		  }		
-		  
+			  }		  
 	  }
 	  if(w<30)
 	  {
@@ -707,12 +508,6 @@ int main(int argc, char *argv[])
 //std::cout << "Saved output image. " << std::endl;
 
 }
-
-/**********************************************************************************/
-
-/**********************************************************************************/
-
-
   infile1.close();
   infile2.close();
   infile3.close();
@@ -742,115 +537,3 @@ int featureCal(int radiusX,int radiusY, int radiusZ, ScanImageType::IndexType In
 	}
 	return sum;
 }
-
-float featureCalVariance(int radiusX,int radiusY, int radiusZ, ScanImageType::IndexType Index, ScanImageType::Pointer scanImage)
-{
-	float variance=0.0;
-	int mean = 0;
-	SegmImageType::IndexType tempIndex;
-	mean= featureCal(radiusX, radiusY,  radiusZ, Index, scanImage)/(2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1);
-	for(int i=-radiusX;i<=radiusX;i++)
-	{
-		for(int j=-radiusY;j<=radiusY;j++)
-		{ 
-			for(int k=-radiusZ;k<=radiusZ;k++)
-			{
-				tempIndex[0] = Index[0] + i;
-				tempIndex[1] = Index[1] + j;
-				tempIndex[2] = Index[2] + k;
-				variance=variance+((scanImage->GetPixel(tempIndex)-mean)*(scanImage->GetPixel(tempIndex)-mean));
-			}
-		}
-	}
-	return sqrt(variance);
-}
-float featureCalGeo(int radiusX,int radiusY, int radiusZ, ScanImageType::IndexType Index, ScanImageType::Pointer scanImage)
-{
-	float GeoMean=0.0;
-	float product=1.0;
-	SegmImageType::IndexType tempIndex;
-	for(int i=-radiusX;i<=radiusX;i++)
-	{
-		for(int j=-radiusY;j<=radiusY;j++)
-		{ 
-			for(int k=-radiusZ;k<=radiusZ;k++)
-			{
-				tempIndex[0] = Index[0] + i;
-				tempIndex[1] = Index[1] + j;
-				tempIndex[2] = Index[2] + k;
-				product=product*scanImage->GetPixel(tempIndex);
-			}
-		}
-	}
-	GeoMean = pow(product,1.0/((2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1)));
-	return GeoMean;
-}
-int featureCalHarmonic(int radiusX,int radiusY, int radiusZ, ScanImageType::IndexType Index, ScanImageType::Pointer scanImage)
-{
-	int sum=0;
-	SegmImageType::IndexType tempIndex;
-	for(int i=-radiusX;i<=radiusX;i++)
-	{
-		for(int j=-radiusY;j<=radiusY;j++)
-		{ 
-			for(int k=-radiusZ;k<=radiusZ;k++)
-			{
-				tempIndex[0] = Index[0] + i;
-				tempIndex[1] = Index[1] + j;
-				tempIndex[2] = Index[2] + k;
-				sum=sum+1/(scanImage->GetPixel(tempIndex));
-			}
-		}
-	}
-	return ((2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1))/sum;
-}
-
-float featureCalSkewness(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage)
-{
-	float sum=0.0;
-	SegmImageType::IndexType tempIndex;
-	int mean = 0;
-	mean= featureCal(radiusX, radiusY,  radiusZ, Index, scanImage)/(2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1);
-	for(int i=-radiusX;i<=radiusX;i++)
-	{
-		for(int j=-radiusY;j<=radiusY;j++)
-		{ 
-			for(int k=-radiusZ;k<=radiusZ;k++)
-			{
-				tempIndex[0] = Index[0] + i;
-				tempIndex[1] = Index[1] + j;
-				tempIndex[2] = Index[2] + k;
-				sum=sum+(scanImage->GetPixel(tempIndex)-mean)*(scanImage->GetPixel(tempIndex)-mean);
-			}
-		}
-	}
-	return pow((sum/((2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1)-1)),3/2);
-}
-
-
-float featureCalKurtosis(int radiusX,int radiusY, int radiusZ,  ScanImageType::IndexType Index,ScanImageType::Pointer scanImage)
-{
-	float sum1=0.0;
-	float sum2=0.0;
-	SegmImageType::IndexType tempIndex;
-	int mean = 0;
-	int n=0;
-	mean= featureCal(radiusX, radiusY,  radiusZ, Index, scanImage)/(2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1);
-	n= (2*radiusX+1)*(2*radiusY+1)*(2*radiusZ+1);
-	for(int i=-radiusX;i<=radiusX;i++)
-	{
-		for(int j=-radiusY;j<=radiusY;j++)
-		{ 
-			for(int k=-radiusZ;k<=radiusZ;k++)
-			{
-				tempIndex[0] = Index[0] + i;
-				tempIndex[1] = Index[1] + j;
-				tempIndex[2] = Index[2] + k;
-				sum1=sum1+pow((scanImage->GetPixel(tempIndex)-mean),4);
-				sum2=sum2+pow((scanImage->GetPixel(tempIndex)-mean),2);
-			}
-		}
-	}
-	return (sum1/n)/((sum2/n)*(sum2/n))-3;
-}
-
